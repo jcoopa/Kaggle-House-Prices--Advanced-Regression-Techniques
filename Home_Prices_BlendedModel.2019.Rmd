@@ -1,0 +1,141 @@
+---
+title: "GLMNET - Final Project"
+author: "Patrick Reilly"
+date: "11/16/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# install packages
+library(caret)
+library(caretEnsemble)
+library(randomForest)
+library(xgboost)
+library(mboost)
+library(kernlab)
+library(e1071)
+
+```
+
+```{r}
+# create the training set from the original df dataframe
+df1 <- df
+
+```
+
+```{r}
+# create dummy variables of the dataframe (the predict portion actually creates the new dataframe)
+df1 <- dummyVars(~ ., data = df1, fullRank = TRUE) %>% 
+  predict(newdata = df1)
+
+```
+
+```{r}
+# remove columns with near zero variance
+#df1 <- df1[, -nzv(df1)]
+
+```
+
+```{r}
+# create new data frame
+df1 <- data.frame(df1)
+
+# split into training and testing data
+df_train <- df1[1:1458,]
+df_test <- df1[1459:2917,]
+
+#colnames(df_train) <- make.names(colnames(df_train))
+
+```
+
+```{r}
+# create control method for the multi-model list
+ctrl <- trainControl(method = 'cv',
+                     savePredictions = 'final',
+                     index = createFolds(log_price,
+                                         k = 5,
+                                         returnTrain = TRUE),
+                     allowParallel = TRUE,
+                     verboseIter = TRUE)
+
+# CREATE THE TRAINING GRIDS FOR THE DIFFERENT ALGORITHMS
+
+# glmboost grid
+glmboost_grid <- expand.grid(mstop = seq(2500, 3000, 500),
+                             prune = 'yes')
+
+# xboost tree grid
+xgb_tree_grid <- expand.grid(nrounds = 1118, # got this from the xgboost model
+                             max_depth = 5, 
+                             eta = 0.022, 
+                             gamma = 0, 
+                             colsample_bytree = seq(0.55, 0.65, 0.1),
+                             subsample = 0.6, 
+                             min_child_weight = 4)
+
+# glmnet grid
+glmnet_grid <- expand.grid(.alpha = 0.125,
+                           .lambda = seq(0.015, 0.02, 0.001))
+
+# svm_grid
+svm_grid <- expand.grid(sigma = 2^-11,
+                        C = 2^seq(4.5, 5, 0.5))
+
+svml_grid <- expand.grid(C = 2^seq(3, 4, 1))
+
+# combine the multiple models for analysis
+multi_model <<- caretList(y = log_price,
+                          x = df_train[,-c(1)],
+                          trControl = ctrl,
+                          metric = 'RMSE',
+                          tuneList = list(glmboost = caretModelSpec(method = 'glmboost',
+                                                                    tuneGrid = glmboost_grid,
+                                                                    preProcess = c('BoxCox', 'center', 'scale', 'zv', 'corr')),
+                                          svmRadial = caretModelSpec(method = 'svmRadial',
+                                                                     tuneGrid = svm_grid,
+                                                                     preProcess = c('BoxCox', 'scale', 'center', 'nzv', 'corr')),
+                                          xgbTree = caretModelSpec(method = 'xgbTree',  
+                                                                   tuneGrid = xgb_tree_grid,
+                                                                   preProcess = c('BoxCox', 'center', 'scale', 'zv')),
+                                          svmLinear = caretModelSpec(method = 'svmLinear',  
+                                                                     tuneGrid = svml_grid,
+                                                                     preProcess = c('BoxCox', 'center', 'scale', 'nzv', 'corr')),
+                                          glmnet = caretModelSpec(method = 'glmnet',  
+                                                                     tuneGrid = glmnet_grid,
+                                                                     preProcess = c('BoxCox', 'center', 'scale', 'zv', 'corr'))
+                                          
+                                          )
+                          )
+
+# use caretEnsemble to weight the inputs into the final model
+greedyEnsemble <- caretEnsemble(multi_model,
+                                metric = 'RMSE',
+                                trControl = trainControl(number = 10, 
+                                                         method = 'repeatedcv', 
+                                                         repeats = 5))
+
+# print summary of the results
+greedyEnsemble$error
+greedyEnsemble$models
+
+
+```
+
+```{r}
+# create the predictions for the test data set using the caretEnsemble model
+predictions <- exp(predict(greedyEnsemble, newdata = df_test[,-c(1)]))
+
+
+# Create the submission data set
+submit <- data.frame(df_test$id, predictions)
+submit <- setNames(submit, c('Id','SalePrice'))
+
+
+# export predictions to csv
+write.csv(submit, 'submissions.csv', row.names = FALSE)
+
+```
