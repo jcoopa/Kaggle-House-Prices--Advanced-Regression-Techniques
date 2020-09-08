@@ -1,0 +1,738 @@
+---
+title: "Home Prices Project - Clean the Data"
+author: "Patrick Reilly"
+date: "UNKNOWN"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# import the relevant packages
+library(tidyverse)
+library(dplyr)
+
+```
+
+```{r}
+# import the csv files
+train <- read_csv('train.csv')
+test <- read_csv('test.csv')
+
+# create a dataframe
+df <- rbind(train)
+
+# create new columns (total_sq_ft & price_psf)
+df <- df %>%
+  mutate(total_sq_ft = ifelse(is.na(TotalBsmtSF),0,TotalBsmtSF) + ifelse(is.na(GrLivArea),0,GrLivArea),
+         price_psf = SalePrice / total_sq_ft)
+
+# create seperate variables for columns I may need later
+sales_price <- df[,'SalePrice']
+sales_price <- sales_price$SalePrice
+log_price <- log(df[,'SalePrice'])
+log_price <- log_price$SalePrice
+total_sq_ft <- df[,'total_sq_ft']
+total_sq_ft <- total_sq_ft$total_sq_ft
+price_psf <- df[,'price_psf']
+price_psf <- price_psf$price_psf
+Id <- test$Id
+
+# combine the train & test datasets for cleaning -- remove the Id & the Sale Price columns
+df <- rbind(within(train, rm('SalePrice')), test)
+
+# recreate total_sq_ft so that the testing data includes it as well
+df <- df %>%
+  mutate(total_sq_ft = ifelse(is.na(TotalBsmtSF),0,TotalBsmtSF) + ifelse(is.na(GrLivArea),0,GrLivArea))
+
+```
+
+```{r}
+# rename the columns so I can remember them better
+cols <- c('id','ms_sub_class', 'ms_zoning', 'lot_frontage', 'lot_area', 'street', 'alley', 'lot_shape', 'land_contour', 'utilities', 'lot_config', 'land_slope', 'neighborhood', 'condition1', 'condition2', 'building_type', 'house_style', 'overall_quality', 'overall_condition', 'year_built', 'year_remodel_added', 'roof_style', 'roof_material', 'exterior_first', 'exterior_second', 'masonry_veneer_type', 'masonry_veneer_area', 'exterior_quality', 'exterior_condition', 'foundation', 'basement_quality', 'basement_condition', 'basement_exposure', 'basement_finish_type1', 'basement_finish_sf1', 'basement_finish_type2', 'basement_finish_sf2', 'basement_unfinished_sf', 'total_basement_sf', 'heating', 'heating_qc', 'central_air', 'electrical', 'first_floor_sf', 'second_floor_sf', 'low_quality_finished_sf', 'above_grade_living_area', 'basement_full_bath', 'basement_half_bath', 'full_bath', 'half_bath', 'bedroom_above_grade', 'kitchen_above_grade', 'kitchen_quality', 'total_rooms_above_grade', 'functional', 'fireplaces', 'fireplace_quality', 'garage_type', 'garage_year_built', 'garage_finish', 'garage_cars', 'garage_area', 'garage_quality', 'garage_condition', 'paved_drive', 'wood_deck_sf', 'open_porch_sf', 'enclosed_porch', 'three_season_porch', 'screen_porch', 'pool_area', 'pool_qc', 'fence', 'misc_feature', 'misc_val', 'month_sold', 'year_sold', 'sale_type', 'sale_condition','total_sq_ft')
+
+# reassign new column names
+df <- setNames(df, cols)
+
+```
+
+```{r} 
+# NULL ANALYSIS CODE
+
+# isolate the missing variables and view them
+na.cols <- which(colSums(is.na(df)) > 0)
+sort(colSums(sapply(df[na.cols], is.na)), decreasing = TRUE)
+
+```
+
+```{r}
+# look at the non-null values in pool_qc... compare them to pool_area
+df %>%
+  filter(!is.na(pool_qc)) %>% 
+  select(id, pool_qc, pool_area)
+
+# check pool_area for nulls
+df %>%
+  filter(is.na(pool_qc), pool_area > 0) %>% 
+  select(id, pool_qc, pool_area, overall_quality)
+
+# check the garage_year_built column for nulls
+df %>%
+  filter(is.na(garage_year_built)) %>% 
+  select(id, garage_year_built, year_built)
+
+# see how many records exist where the garage was not built when the house was.
+df %>%
+  filter(garage_year_built != year_built) %>% 
+  select(id, garage_year_built, year_built)
+
+# Do some more garage row checking on the Null garage values
+garage.cols <- c('id','garage_area', 'garage_cars', 'garage_quality', 'garage_finish', 'garage_condition', 'garage_type')
+df[is.na(df$garage_condition),garage.cols]
+
+# Find the garage_quality Nulls
+df %>% 
+  filter(is.na(garage_quality), garage_area > 0) %>% 
+  select(garage.cols)
+
+# look at the breakout of possible garage_quality's and their frequency
+df %>% 
+  group_by(garage_quality) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# Find the garage_finish Nulls
+df %>% 
+  filter(is.na(garage_finish), garage_area > 0) %>% 
+  select(garage.cols)
+
+# look at the breakout of possible garage_finish values and their frequency
+df %>% 
+  group_by(garage_finish) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# Find the garage_condition Nulls
+df %>% 
+  filter(is.na(garage_condition), garage_area > 0) %>% 
+  select(garage.cols)
+
+# look at the breakout of possible garage_condition values and their frequency
+df %>% 
+  group_by(garage_condition) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# Find the garage_type Error
+df %>% 
+  filter(!is.na(garage_type), is.na(garage_area)) %>% 
+  select(garage.cols)
+
+# specifically look at garage_area column where ALL other columns are 0 or NULL
+df %>% 
+  filter(garage_area == 0 & garage_cars == 0 & is.na(garage_quality) & is.na(garage_finish) & is.na(garage_type) & is.na(garage_condition)) %>% 
+  select(garage.cols)
+
+# look at the garage_finish uniques
+df %>% 
+  group_by(garage_finish) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# look at the garage_quality uniques
+df %>% 
+  group_by(garage_quality) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# look at the garage_condition uniques
+df %>% 
+  group_by(garage_condition) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# look at the breakout of possible kitchen_quality values and their frequency
+df %>% 
+  group_by(kitchen_quality) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# LOOK AT THE electrical COLUMN
+df %>% 
+  filter(is.na(electrical)) %>% 
+  select(id,electrical)
+
+# look at the breakout of possible electrical values and their frequency
+df %>% 
+  group_by(electrical) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# BASEMENT COLUMN CHECKING -- show all Bsmt Columns
+basement.cols <- c('id','basement_quality', 'basement_condition', 'basement_exposure', 'basement_finish_type1', 'basement_finish_sf1', 'basement_finish_type2','basement_finish_sf2','basement_unfinished_sf','total_basement_sf','basement_full_bath','basement_half_bath')
+df[is.na(df$basement_quality),basement.cols]
+
+# CHECKING THE basement_exposure column for nulls
+df %>% 
+  filter(is.na(basement_exposure)) %>% 
+  select(basement.cols)
+
+# look at the breakout of possible basement_exposure values and their frequency
+df %>% 
+  group_by(basement_exposure) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# specifically find the basement_exposure columns where a basement_quality field is recorded
+df %>% 
+  filter(is.na(basement_exposure), !is.na(basement_quality)) %>% 
+  select(basement.cols)
+
+# CHECKING THE basement_quality column for nulls
+df %>% 
+  filter(is.na(basement_quality)) %>% 
+  select(basement.cols)
+
+# specifically look at basement_quality column where basement_condition has a value
+df %>% 
+  filter(is.na(basement_quality) & !is.na(basement_condition)) %>% 
+  select(basement.cols)
+
+# look at the breakout of possible basement_quality values and their frequency
+df %>% 
+  group_by(basement_quality) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# specifically look at basement_quality column where ALL other columns are 0 or NULL
+df %>% 
+  filter(is.na(basement_quality) & is.na(basement_condition) & is.na(basement_exposure) & is.na(basement_finish_type1) & (basement_finish_sf1 == 0 | is.na(basement_finish_sf1)) & is.na(basement_finish_type2) & (basement_finish_sf2 == 0 | is.na(basement_finish_sf2)) & (basement_unfinished_sf == 0 | is.na(basement_unfinished_sf)) & (total_basement_sf == 0 | is.na(total_basement_sf)) & (basement_full_bath == 0 | is.na(basement_full_bath)) & (basement_half_bath == 0 | is.na(basement_half_bath))) %>% 
+  select(basement.cols)
+
+# look at the breakout of possible basement_quality values and their frequency
+df %>% 
+  group_by(basement_quality) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# look at the breakout of possible basement_condition values and their frequency
+df %>% 
+  group_by(basement_condition) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# look at the breakout of possible basement_exposure values and their frequency
+df %>% 
+  group_by(basement_exposure) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# look at the breakout of possible basement_finish_type1 values and their frequency
+df %>% 
+  group_by(basement_finish_type1) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# Check for both columns being NULL
+df %>% 
+  filter(is.na(exterior_first) & is.na(exterior_second)) %>% 
+  select(id,exterior_first, exterior_second)
+
+# look at the breakout of possible exterior_first values and their frequency
+df %>% 
+  group_by(exterior_first) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# Check for exterior_second being NULL
+df %>% 
+  filter(is.na(exterior_second))
+
+# look at the breakout of possible exterior_first values and their frequency
+df %>% 
+  group_by(exterior_first,exterior_second) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# look at the breakout of possible exterior_quality values and their frequency
+df %>% 
+  group_by(exterior_quality) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# look at the breakout of possible exterior_condition values and their frequency
+df %>% 
+  group_by(exterior_condition) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# sale_type Nulls
+df %>% 
+  filter(is.na(sale_type))
+
+# look at the breakout of possible sale_type values and their frequency
+df %>% 
+  group_by(sale_type) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# functional Nulls
+df %>% 
+  filter(is.na(functional))
+
+# look at the breakout of possible functional values and their frequency
+df %>% 
+  group_by(functional) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# utilities Nulls
+df %>% 
+  filter(is.na(utilities))
+
+# look at the breakout of possible utilities values and their frequency
+df %>% 
+  group_by(utilities) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# ms_zoning & ms_sub_class Nulls
+df %>% 
+  filter(is.na(ms_zoning) | is.na(ms_sub_class))
+
+# look at the breakout of possible ms_zoning & ms_sub_class values and their frequency
+df %>% 
+  filter(!is.na(ms_zoning) & (ms_sub_class == 30 | ms_sub_class == 20 | ms_sub_class == 70)) %>% 
+  group_by(ms_zoning,ms_sub_class) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# Masonry NULLS
+df %>% 
+  filter(is.na(masonry_veneer_type))
+
+# look at the breakout of possible masonry_veneer_type values and their frequency
+df %>% 
+  group_by(masonry_veneer_type) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# Lot Frontage Nulls
+df %>% 
+  filter(is.na(lot_frontage))
+
+# fence NULLS
+df %>% 
+  filter(is.na(fence))
+
+# misc_feature NULLS
+df %>% 
+  filter(is.na(misc_feature))
+
+# look at the breakout of possible misc_feature values and their frequency
+df %>% 
+  group_by(misc_feature) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# fireplace_quality NULLS
+df %>% 
+  filter(is.na(fireplace_quality)) %>% 
+  select(id, fireplaces, fireplace_quality)
+
+# make sure all of the Null values have 0 for fireplaces
+df %>% 
+  group_by(fireplaces, fireplace_quality) %>% 
+  filter(is.na(fireplace_quality)) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# alley NULLS
+df %>% 
+  filter(is.na(alley))
+
+# check options for alley
+df %>% 
+  group_by(alley) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# Look at foundation
+df %>% 
+  group_by(foundation) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# Look at heating
+df %>% 
+  group_by(heating) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# Look at heating_qc
+df %>% 
+  group_by(heating_qc) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# Look at central_air
+df %>% 
+  group_by(central_air) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# Look at roof_style
+df %>% 
+  group_by(roof_style) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# Look at roof_material
+df %>% 
+  group_by(roof_material) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# Look at land_contour
+df %>% 
+  group_by(land_contour) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# Look at land_slope
+df %>% 
+  group_by(land_slope) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# Look at building_type
+df %>% 
+  group_by(building_type) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# Look at house_style
+df %>% 
+  group_by(house_style) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# Look at neighborhood
+df %>% 
+  group_by(neighborhood) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# Look at condition1
+df %>% 
+  group_by(condition1) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# Look at condition2
+df %>% 
+  group_by(condition2) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# Look at paved_drive
+df %>% 
+  group_by(paved_drive) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# Look at street
+df %>% 
+  group_by(street) %>% 
+  dplyr::summarize(count = n()) %>%  
+  arrange(desc(count))
+
+# change year_sold & month_sold into factors (non-numeric)
+df <- df %>% 
+  mutate(year_sold_keep = df$year_sold)
+
+```
+
+```{r}
+# VARIABLE MODIFICATION CODE
+
+# assign the pool_qc value based on the overall_quality of the home
+df$pool_qc[2421] = 'Fa'
+df$pool_qc[2504] = 'TA'
+df$pool_qc[2600] = 'Fa'
+
+# set all pool_qc fields with NA and 0 pool_area to None, cuz they don't have a pool.
+df$pool_qc[is.na(df$pool_qc) & df$pool_area == 0] = 'None'
+
+# update the garage_year_built field to the year the house was built (when it is null)
+df$garage_year_built[is.na(df$garage_year_built)] = df$year_built[is.na(df$garage_year_built)]
+
+# Update the NA with the most common occurring garage_quality
+df$garage_quality[is.na(df$garage_quality) & df$garage_area > 0] = 'TA'
+
+# Update the NA with the most common occurring garage_finish
+df$garage_finish[is.na(df$garage_finish) & df$garage_area > 0] = 'Unf'
+
+# Update the NA with the most common occurring garage_condition
+df$garage_condition[is.na(df$garage_condition) & df$garage_area > 0] = 'TA'
+
+# Fix the issue where a "detached" garage is listed, but there is 0 Sq Ft
+df$garage_area[df$id == 2577] = 0
+df$garage_cars[df$id == 2577] = 0
+df$garage_type[df$id == 2577] = 'None'
+
+# UPDATE garage_quality, garage_finish, garage_condition, and garage_type data to None where applicable
+df$garage_quality[df$garage_area == 0 & df$garage_cars == 0 & is.na(df$garage_quality)] = 'None'
+df$garage_finish[df$garage_area == 0 & df$garage_cars == 0 & is.na(df$garage_finish)] = 'None'
+df$garage_condition[df$garage_area == 0 & df$garage_cars == 0 & is.na(df$garage_condition)] = 'None'
+df$garage_type[df$garage_area == 0 & df$garage_cars == 0 & is.na(df$garage_type)] = 'None'
+
+# UPDATE kitchen_quality data to TA where applicable
+df$kitchen_quality[is.na(df$kitchen_quality)] = 'TA'
+
+# UPDATE electrical data to SBrkr where applicable
+df$electrical[is.na(df$electrical)] = 'SBrkr'
+
+# UPDATE basement_exposure data to No where applicable
+df$basement_exposure[is.na(df$basement_exposure) & !is.na(df$basement_quality)] = 'No'
+
+# UPDATE NULL basement_quality values to TA where basement_condition has a value
+df$basement_quality[is.na(df$basement_quality) & !is.na(df$basement_condition)] = 'TA'
+
+# UPDATE NULL basement_quality, basement_condition, basement_exposure, basement_finish_type1, basement_finish_type2, basement_full_bath,
+# basement_half_bath, basement_finish_sf1, basement_finish_sf2, basement_unfinished_sf, total_basement_sf values to None
+df$basement_quality[is.na(df$basement_quality)] = 'None'
+df$basement_condition[is.na(df$basement_condition)] = 'None'
+df$basement_exposure[is.na(df$basement_exposure)] = 'None'
+df$basement_finish_type1[is.na(df$basement_finish_type1)] = 'None'
+df$basement_finish_type2[is.na(df$basement_finish_type2)] = 'None'
+df$basement_full_bath[is.na(df$basement_full_bath)] = 0
+df$basement_half_bath[is.na(df$basement_half_bath)] = 0
+df$basement_finish_sf1[is.na(df$basement_finish_sf1)] = 0
+df$basement_finish_sf2[is.na(df$basement_finish_sf2)] = 0
+df$basement_unfinished_sf[is.na(df$basement_unfinished_sf)] = 0
+df$total_basement_sf[is.na(df$total_basement_sf)] = 0
+
+# When they are both NULL, update to Other
+df$exterior_first[is.na(df$exterior_first) & is.na(df$exterior_second)] = 'VinylSd'
+df$exterior_second[is.na(df$exterior_first) & is.na(df$exterior_second)] = 'VinylSd'
+
+# When they are both NULL, update to Other
+df$exterior_second[is.na(df$exterior_second)] = 'None'
+
+# UPDATE sale_type columns to WD
+df$sale_type[is.na(df$sale_type) & df$sale_condition == 'Normal'] = 'WD'
+
+# UPDATE functional columns to Typ
+df$functional[is.na(df$functional)] = 'Typ'
+
+# This data is useless. No houses use anything different from one another. Removing it.
+df$utilities = NULL
+
+# # update the null ms_zoning & ms_sub_class values based on frequency
+df$ms_zoning[is.na(df$ms_zoning) & df$ms_sub_class == 20] = 'RL'
+df$ms_zoning[is.na(df$ms_zoning) & df$ms_sub_class == 30] = 'RM'
+df$ms_zoning[is.na(df$ms_zoning) & df$ms_sub_class == 70] = 'RM'
+
+# Update the masonry_veneer_type with a masonry_veneer_area > 0  to the most common type
+df$masonry_veneer_type[is.na(df$masonry_veneer_type) & df$masonry_veneer_area > 0] = 'BrkFace'
+
+# update the rest of the nulls to None, or 0
+df$masonry_veneer_type[is.na(df$masonry_veneer_type)] = 'None'
+df$masonry_veneer_area[is.na(df$masonry_veneer_area)] = 0
+
+# set fence to None
+df$fence[is.na(df$fence)] = 'None'
+
+# set misc_feature to None
+df$misc_feature[is.na(df$misc_feature)] = 'None'
+
+# set null fireplace_quality to None
+df$fireplace_quality[is.na(df$fireplace_quality)] = 'None'
+
+# set null alley to None
+df$alley[is.na(df$alley)] = 'None'
+
+```
+
+```{r}
+# summarize the different neighborhoods and determine the Median
+(lot_by_neighborhood <- df[,c('neighborhood','lot_frontage')] %>%
+  group_by(neighborhood) %>%
+  summarize(median = median(lot_frontage, na.rm = TRUE)))
+
+# set the lot_frontage to the median for the respective neighborhood
+for (i in 1:nrow(df)){
+  if(is.na(df$lot_frontage[i])){
+    df$lot_frontage[i] <- as.integer(median(df$lot_frontage[df$neighborhood == df$neighborhood[i]], na.rm = TRUE))
+    }
+}
+
+```
+
+```{r}
+# Do a final check on missing variables and view them (if any still exist)
+na.cols <- which(colSums(is.na(df)) > 0)
+na.cols
+
+```
+
+```{r}
+# lets dive into the character variables
+character_vars <- names(df[,sapply(df, is.character)])
+character_vars
+
+```
+
+```{r}
+# add plyr package... it conflicts with dplyr, so I will detach it afterwards.
+library(plyr)
+
+# create conversion variables for categorical to numerical
+Quality <- c('None' = 0, 'Po' = 1, 'Fa' = 2, 'TA' = 3, 'Gd' = 4, 'Ex' = 5)
+Finish <- c('None' = 0, 'Unf' = 1, 'RFn' = 2, 'Fin' = 3)
+Exposure <- c('None' = 0, 'No' = 1, 'Mn' = 2, 'Av' = 3, 'Gd' = 4)
+FinType <- c('None' = 0, 'Unf' = 1, 'LwQ' = 2, 'Rec' = 3, 'BLQ' = 4, 'ALQ' = 5, 'GLQ' = 6)
+Functional <- c('Sal' = 0, 'Sev' = 1, 'Maj2' = 2, 'Maj1' = 3, 'Mod' = 4, 'Min2' = 5, 'Min1' = 6, 'Typ' = 7)
+Masonry <- c('None' = 0, 'BrkCmn' = 0, 'BrkFace' = 1, 'Stone' = 2)
+df$land_slope <- as.integer(revalue(df$land_slope, c('Sev' = 0, 'Mod' = 1, 'Gtl' = 2)))
+df$lot_shape <- as.integer(revalue(df$lot_shape, c('IR3' = 0, 'IR2' = 1, 'IR1' = 2, 'Reg' = 3)))
+
+# change the quality labels to numerical values instead
+df$pool_qc <- as.integer(revalue(df$pool_qc, Quality))
+df$garage_quality <- as.integer(revalue(df$garage_quality, Quality))
+df$garage_condition <- as.integer(revalue(df$garage_condition, Quality))
+df$kitchen_quality <- as.integer(revalue(df$kitchen_quality, Quality))
+df$basement_quality <- as.integer(revalue(df$basement_quality, Quality))
+df$basement_condition <- as.integer(revalue(df$basement_condition, Quality))
+df$exterior_quality <- as.integer(revalue(df$exterior_quality, Quality))
+df$exterior_condition <- as.integer(revalue(df$exterior_condition, Quality))
+df$fireplace_quality <- as.integer(revalue(df$fireplace_quality, Quality))
+df$heating_qc <- as.integer(revalue(df$heating_qc, Quality))
+df$garage_finish <- as.integer(revalue(df$garage_finish, Finish))
+df$basement_exposure <- as.integer(revalue(df$basement_exposure, Exposure))
+df$basement_finish_type1 <- as.integer(revalue(df$basement_finish_type1, FinType))
+df$basement_finish_type2 <- as.integer(revalue(df$basement_finish_type2, FinType))
+df$functional <- as.integer(revalue(df$functional, Functional))
+df$masonry_veneer_type <- as.integer(revalue(df$masonry_veneer_type, Masonry))
+
+df$central_air <- as.integer(revalue(df$central_air, c('N' = 0, 'Y' = 1)))
+df$street <- as.integer(revalue(df$street, c('Grvl' = 0, 'Pave' = 1)))
+df$paved_drive <- as.integer(revalue(df$paved_drive, c('N' = 0, 'P' = 1, 'Y' = 2)))
+
+# convert variables to strings
+str(df$ms_sub_class)
+str(df$year_sold)
+str(df$month_sold)
+
+# set variables as factors
+df$garage_type <- as.factor(df$garage_type)
+df$electrical <- as.factor(df$electrical)
+df$exterior_first <- as.factor(df$exterior_first)
+df$exterior_second <- as.factor(df$exterior_second)
+df$sale_type <- as.factor(df$sale_type)
+df$sale_condition <- as.factor(df$sale_condition)
+df$ms_zoning <- as.factor(df$ms_zoning)
+df$lot_config <- as.factor(df$lot_config)
+df$fence <- as.factor(df$fence)
+df$misc_feature <- as.factor(df$misc_feature)
+df$alley <- as.factor(df$alley)
+df$foundation <- as.factor(df$foundation)
+df$heating <- as.factor(df$heating)
+df$roof_style <- as.factor(df$roof_style)
+df$roof_material <- as.factor(df$roof_material)
+df$land_contour <- as.factor(df$land_contour)
+df$building_type <- as.factor(df$building_type)
+df$house_style <- as.factor(df$house_style)
+df$neighborhood <- as.factor(df$neighborhood)
+df$condition1 <- as.factor(df$condition1)
+df$condition2 <- as.factor(df$condition2)
+#df$ms_sub_class <- as.factor(df$ms_sub_class)
+df$year_sold <- as.factor(df$year_sold)
+df$month_sold <- as.factor(df$month_sold)
+
+# remove thwe plyr package
+detach(package:plyr)
+
+```
+
+```{r}
+# FEATURE ENGINEERING
+
+# create a new column for total square feet and calculate the price per sq ft
+df <- df %>% 
+  mutate(total_bathrooms = full_bath + (half_bath * 0.5) + basement_full_bath + (basement_half_bath * 0.5),
+         total_sq_ft = total_basement_sf + above_grade_living_area,
+         total_sq_ft_sq = sqrt(total_sq_ft),
+         has_pool = ifelse(df$fireplaces > 0, 1, 0),
+         has_garage = ifelse(df$garage_area > 0, 1, 0),
+         has_basement = ifelse(df$total_basement_sf > 0, 1, 0),
+         remodeled = ifelse(year_built == year_remodel_added, 0, 1),
+         age = as.numeric(year_sold_keep - year_remodel_added),
+         new_house = ifelse(year_sold_keep == year_built, 1, 0),
+         total_porch_sf = open_porch_sf + enclosed_porch + three_season_porch + screen_porch,
+         age_new = year_built + year_remodel_added,
+         total_quality = overall_quality * overall_condition * exterior_quality * exterior_condition
+         )
+
+# break months into seasons
+for (i in 1:nrow(df)){
+  if(df$month_sold[i] %in% c(4,5)){
+     df$season[i] <- 'spring'
+  }
+  if(df$month_sold[i] %in% c(6,7,8)){
+     df$season[i] <- 'summer'
+  }
+  if(df$month_sold[i] %in% c(9,10,11)){
+     df$season[i] <- 'fall'
+  }
+  if(df$month_sold[i] %in% c(12,1,2,3)){
+     df$season[i] <- 'winter'
+  }
+}
+
+# make season a factor
+df$season <- as.factor(df$season)
+
+# break out the rich, middle-class, and poor neighborhoods
+df <- df %>% 
+  mutate(neighs = 0)
+
+df$neighs[df$neighborhood %in% c('StoneBr', 'NridgHt', 'NoRidge')] <- 'Rich'
+df$neighs[!df$neighborhood %in% c('MeadowV', 'IDOTRR', 'BrDale', 
+                                    'StoneBr', 'NridgHt', 'NoRidge')] <- 'Middle'
+df$neighs[df$neighborhood %in% c('MeadowV', 'IDOTRR', 'BrDale')] <- 'Poor'
+
+# make neighs a factor
+df$neighs <- as.factor(df$neighs)
+
+```
+
+```{r}
+# remove some unecessary columns
+df$year_sold_keep = NULL
+df$year_remodel_added = NULL
+df$garage_year_built = NULL
+df$garage_area = NULL
+df$garage_condition = NULL
+df$bedroom_above_grade = NULL
+df$exterior_quality = NULL
+
+```
+
+```{r}
+# remove some outliers
+df <- df[-c(524, 1299),]
+sales_price <- sales_price[-c(524, 1299)]
+log_price <- log_price[-c(524, 1299)]
+total_sq_ft <- total_sq_ft[-c(524, 1299)]
+price_psf <- price_psf[-c(524, 1299)]
+
+```
+
+
+
+
+
