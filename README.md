@@ -8,8 +8,10 @@ This was performed as a final project for a graduate-level R class. Another stud
 
 
 ## [Test Data](https://github.com/jcoopa/Kaggle-House-Prices--Advanced-Regression-Techniques/blob/master/test.csv)
+Testing Data set provided by Kaggle
+
 ## [Train Data](https://github.com/jcoopa/Kaggle-House-Prices--Advanced-Regression-Techniques/blob/master/train.csv)
-#### Two data sets provided by Kaggle
+Training Data set provided by Kaggle
 
 ## [Data Preparation](https://github.com/jcoopa/Kaggle-House-Prices--Advanced-Regression-Techniques/blob/master/Home_Prices_Clean.TransformData.2019.Rmd)
 #### Extensive cleaning and preparation was performed on both the test data and the train data. 
@@ -24,4 +26,4 @@ This was performed as a final project for a graduate-level R class. Another stud
  * xgbTree
 
 ## [Report](https://github.com/jcoopa/Kaggle-House-Prices--Advanced-Regression-Techniques/blob/master/Kaggle%20Housing%20Prices%20Final%20Report%20Nov%2C%202019.pdf)
-#### This PDF was a required deliverable for the assingment, it provides written details about the methods we used as well as analysis of the performance of the model. 
+#### This PDF was a required deliverable, it provides written details about the methods we used as well as analysis of the performance of the model. 
